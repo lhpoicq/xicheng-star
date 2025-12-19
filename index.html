@@ -7,6 +7,10 @@
     <title>西城英语小状元 - Xicheng English Star</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+        // 模拟环境变量，防止 SDK 报错导致白屏
+        window.process = { env: { API_KEY: "" } };
+    </script>
     <style>
         body { 
             font-family: 'Noto Sans SC', sans-serif; 
@@ -31,18 +35,22 @@
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
         button:active { transform: scale(0.95); }
     </style>
-<script type="importmap">
+    <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@1.34.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0"
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
 </head>
 <body>
     <div id="root"></div>
+    <!-- 显式引入入口文件 -->
+    <script type="module" src="./index.tsx"></script>
 </body>
 </html>
