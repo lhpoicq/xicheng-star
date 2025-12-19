@@ -9,6 +9,7 @@ import { getWordExplanation } from './services/geminiService.ts';
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.WELCOME);
   const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
+  const [selectedUnit, setSelectedUnit] = useState<number | 'all' | null>(null);
   const [sessionWords, setSessionWords] = useState<Word[]>([]);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [aiLoading, setAiLoading] = useState(false);
@@ -26,36 +27,35 @@ const App: React.FC = () => {
   // Persistence
   const [wrongWords, setWrongWords] = useState<WrongWord[]>([]);
   const [learningHistory, setLearningHistory] = useState<HistoryRecord[]>([]);
+  const [testedWordIds, setTestedWordIds] = useState<string[]>([]);
 
   // Load persistence data
   useEffect(() => {
     const savedWrong = localStorage.getItem('xicheng_wrong_book');
     const savedHistory = localStorage.getItem('xicheng_history');
+    const savedTested = localStorage.getItem('xicheng_tested_ids');
     if (savedWrong) setWrongWords(JSON.parse(savedWrong));
     if (savedHistory) setLearningHistory(JSON.parse(savedHistory));
+    if (savedTested) setTestedWordIds(JSON.parse(savedTested));
   }, []);
 
-  // Save wrong book changes
+  // Save changes
   useEffect(() => {
     localStorage.setItem('xicheng_wrong_book', JSON.stringify(wrongWords));
-  }, [wrongWords]);
-
-  // Save history changes
-  useEffect(() => {
     localStorage.setItem('xicheng_history', JSON.stringify(learningHistory));
-  }, [learningHistory]);
+    localStorage.setItem('xicheng_tested_ids', JSON.stringify(testedWordIds));
+  }, [wrongWords, learningHistory, testedWordIds]);
 
-  // Generate quiz options whenever the word or mode changes
+  // Options generation for multiple choice
   useEffect(() => {
-    if (view === AppView.QUIZ && sessionWords.length > 0 && currentWordIndex < sessionWords.length) {
+    if (view === AppView.QUIZ && sessionWords.length > 0 && currentWordIndex < sessionWords.length && quizMode === 'ENG_TO_CHI') {
       const currentWord = sessionWords[currentWordIndex];
-      const otherWords = MOCK_WORDS.filter(w => w.id !== currentWord.id);
-      const shuffledOthers = [...otherWords].sort(() => 0.5 - Math.random());
-      const distractors = shuffledOthers.slice(0, 3).map(w => w.chinese);
+      const otherWords = MOCK_WORDS.filter(w => w.chinese !== currentWord.chinese);
+      const distractors = [...otherWords].sort(() => 0.5 - Math.random()).slice(0, 3).map(w => w.chinese);
       const allOptions = [...distractors, currentWord.chinese].sort(() => 0.5 - Math.random());
       setOptions(allOptions);
     }
-  }, [view, currentWordIndex, sessionWords]);
+  }, [view, currentWordIndex, sessionWords, quizMode]);
 
   const speak = (text: string) => {
     const utterance = new SpeechSynthesisUtterance(text);
@@ -63,35 +63,46 @@ const App: React.FC = () => {
     window.speechSynthesis.speak(utterance);
   };
 
-  const startSession = (grade: number, length: number | 'all') => {
+  const handleGradeSelect = (grade: number) => {
     setSelectedGrade(grade);
-    const filtered = MOCK_WORDS.filter(w => w.grade === grade);
-    const shuffled = [...filtered].sort(() => 0.5 - Math.random());
-    const finalWords = length === 'all' ? shuffled : shuffled.slice(0, length);
+    setView(AppView.UNIT_SELECT);
+  };
+
+  const handleUnitSelect = (unit: number | 'all') => {
+    setSelectedUnit(unit);
+    setView(AppView.MODE_SELECT);
+  };
+
+  const startSession = (grade: number, unit: number | 'all', mode: QuizMode, length: number | 'all') => {
+    let pool = MOCK_WORDS.filter(w => w.grade === grade);
+    if (unit !== 'all') {
+      pool = pool.filter(w => w.unit === unit);
+    }
+
+    // Filter logic: priorize untested words
+    let availableWords = pool.filter(w => !testedWordIds.includes(w.id));
+    
+    if (availableWords.length === 0) {
+      const wordIdsInPool = pool.map(w => w.id);
+      setTestedWordIds(prev => prev.filter(id => !wordIdsInPool.includes(id)));
+      availableWords = pool;
+    }
+    
+    const shuffledPool = [...availableWords].sort(() => 0.5 - Math.random());
+    const finalWords = length === 'all' ? shuffledPool : shuffledPool.slice(0, length);
+    
+    if (finalWords.length === 0) {
+       alert("该单元暂无词汇，请选择其他单元。");
+       setView(AppView.UNIT_SELECT);
+       return;
+    }
+
     setSessionWords(finalWords);
+    setQuizMode(mode);
     setCurrentWordIndex(0);
     setCorrectInSession(0);
     setWrongInSession(0);
     setView(AppView.QUIZ); 
-    setExplanation(null);
-    setQuizFeedback(null);
-    setUserAnswer('');
-  };
-
-  // Fix: Added missing handleGradeSelect
-  const handleGradeSelect = (grade: number) => {
-    startSession(grade, sessionLength);
-  };
-
-  // Fix: Added missing startWrongBookSession
-  const startWrongBookSession = () => {
-    if (wrongWords.length === 0) return;
-    const shuffled = [...wrongWords].sort(() => 0.5 - Math.random());
-    setSessionWords(shuffled);
-    setCurrentWordIndex(0);
-    setCorrectInSession(0);
-    setWrongInSession(0);
-    setView(AppView.QUIZ);
     setExplanation(null);
     setQuizFeedback(null);
     setUserAnswer('');
@@ -126,6 +137,8 @@ const App: React.FC = () => {
       setCorrectInSession(prev => prev + 1);
       speak(currentWord.english);
       
+      setTestedWordIds(prev => Array.from(new Set([...prev, currentWord.id])));
+
       setWrongWords(prev => {
         const existing = prev.find(w => w.id === currentWord.id);
         if (existing) {
@@ -141,97 +154,162 @@ const App: React.FC = () => {
       setWrongInSession(prev => prev + 1);
       speak("Oops");
       
-      // AI enhancement: Fetch explanation for the missed word
-      setAiLoading(true);
-      getWordExplanation(currentWord.english, selectedGrade || 1).then(res => {
-        setExplanation(res);
-        setAiLoading(false);
-      });
-
       setWrongWords(prev => {
         const existing = prev.find(w => w.id === currentWord.id);
         if (existing) return prev.map(w => w.id === currentWord.id ? { ...w, consecutiveCorrectCount: 0 } : w);
         return [...prev, { ...currentWord, consecutiveCorrectCount: 0 }];
       });
 
-      // Show correct answer and explanation for longer before skipping
-      setTimeout(moveToNext, 4000);
+      setAiLoading(true);
+      getWordExplanation(currentWord.english, selectedGrade || 1).then(res => {
+        setExplanation(res);
+        setAiLoading(false);
+      });
+
+      setTimeout(moveToNext, 4500);
     }
   };
 
-  const getStatsForRange = (days: number | 'all') => {
-    const now = new Date();
-    const filtered = learningHistory.filter(h => {
-      if (days === 'all') return true;
-      const recordDate = new Date(h.date);
-      const diffTime = Math.abs(now.getTime() - recordDate.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays <= days;
-    });
-    return {
-      learned: filtered.reduce((acc, curr) => acc + curr.wordsLearned, 0),
-      errors: filtered.reduce((acc, curr) => acc + curr.wrongCount, 0),
-      sessions: filtered.length
-    };
+  const resetProgress = () => {
+    if (confirm("确定要重置所有已过关单词记录吗？")) {
+      setTestedWordIds([]);
+      localStorage.removeItem('xicheng_tested_ids');
+    }
   };
 
-  const renderWelcome = () => {
-    const daily = getStatsForRange(1);
+  const renderWelcome = () => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center px-4 animate-fade-in">
+      <div className="relative mb-8">
+        <div className="w-40 h-40 bg-white rounded-full flex items-center justify-center shadow-2xl border-8 border-yellow-400 p-4 overflow-hidden">
+            <img src="https://picsum.photos/seed/star-fltrp/200/200" alt="FLTRP Mascot" className="w-full h-full object-cover rounded-full" />
+        </div>
+        <div className="absolute -bottom-4 -right-4 bg-red-500 text-white font-cartoon text-lg px-4 py-1 rounded-full shadow-lg -rotate-12 border-4 border-white">
+          最新外研版
+        </div>
+      </div>
+      <h1 className="text-5xl md:text-7xl font-cartoon text-blue-600 mb-6 drop-shadow-md">西城英语小状元</h1>
+      
+      <div className="mb-10 flex flex-col items-center space-y-4">
+        <div className="bg-white px-8 py-3 rounded-full shadow-sm border border-blue-50">
+           <span className="text-blue-800 font-bold">同步北京市西城区教材：外研版(一起点)</span>
+        </div>
+        <span className="font-bold text-blue-800 text-lg">🎯 闯关词量</span>
+        <div className="flex bg-white p-2 rounded-full shadow-inner border">
+          {[5, 10, 20, 'all'].map(len => (
+            <button
+              key={len}
+              onClick={() => setSessionLength(len as any)}
+              className={`px-5 py-2 rounded-full font-bold transition ${sessionLength === len ? 'bg-blue-500 text-white shadow-md' : 'text-blue-400 hover:bg-blue-50'}`}
+            >
+              {len === 'all' ? '全部' : len}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6">
+        <button onClick={() => setView(AppView.GRADE_SELECT)} className="bg-blue-600 hover:bg-blue-700 text-white font-cartoon text-3xl px-14 py-6 rounded-full shadow-2xl transition hover:scale-105 border-b-8 border-blue-900">同步闯关 🚀</button>
+        <button onClick={() => setView(AppView.WRONG_BOOK)} className="bg-red-500 hover:bg-red-600 text-white font-cartoon text-3xl px-14 py-6 rounded-full shadow-2xl transition hover:scale-105 border-b-8 border-red-900">错题本 ({wrongWords.length})</button>
+      </div>
+
+      <button onClick={resetProgress} className="mt-12 text-gray-400 text-sm hover:text-red-400 underline transition">
+        重置过关进度 (当前过关: {testedWordIds.length})
+      </button>
+    </div>
+  );
+
+  const renderGradeSelect = () => (
+    <div className="max-w-6xl mx-auto px-4 py-12 animate-fade-in">
+      <div className="flex items-center space-x-4 mb-12">
+        <button onClick={() => setView(AppView.WELCOME)} className="bg-white p-3 rounded-full shadow-md text-blue-600 hover:scale-110 transition"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
+        <h2 className="text-4xl font-cartoon text-blue-600">选择年级</h2>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+        {GRADES.map(grade => {
+          const gradeWords = MOCK_WORDS.filter(w => w.grade === grade);
+          const totalGradeWords = gradeWords.length;
+          const testedGradeWords = gradeWords.filter(w => testedWordIds.includes(w.id)).length;
+          return (
+            <div key={grade} className="relative">
+              <GradeCard grade={grade} isSelected={selectedGrade === grade} onClick={handleGradeSelect} />
+              <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-blue-700 shadow-sm border border-blue-50">
+                过关: {testedGradeWords}/{totalGradeWords}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderUnitSelect = () => {
+    const units = Array.from(new Set(MOCK_WORDS.filter(w => w.grade === selectedGrade).map(w => w.unit))).sort((a, b) => a - b);
     return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh] text-center px-4">
-        <div className="relative mb-8">
-          <div className="w-40 h-40 bg-white rounded-full flex items-center justify-center shadow-2xl border-8 border-yellow-400 p-4">
-              <img src="https://picsum.photos/seed/star-main/200/200" alt="Xicheng Star" className="rounded-full w-full h-full object-cover" />
-          </div>
-          <div className="absolute -bottom-4 -right-4 bg-red-500 text-white font-cartoon text-lg px-4 py-1 rounded-full shadow-lg -rotate-12 border-4 border-white">
-            西城专用
-          </div>
+      <div className="max-w-4xl mx-auto px-4 py-12 animate-fade-in text-center">
+        <div className="flex items-center space-x-4 mb-12 text-left">
+          <button onClick={() => setView(AppView.GRADE_SELECT)} className="bg-white p-3 rounded-full shadow-md text-blue-600 hover:scale-110 transition"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
+          <h2 className="text-4xl font-cartoon text-blue-600">{selectedGrade}年级 - 选择单元</h2>
         </div>
-        <h1 className="text-5xl md:text-7xl font-cartoon text-blue-600 mb-6 drop-shadow-md">西城英语小状元</h1>
         
-        <div className="flex flex-wrap justify-center gap-4 mb-10">
-          <div className="bg-white p-4 rounded-3xl shadow-sm border border-blue-100 flex flex-col items-center">
-             <span className="text-blue-500 text-sm font-bold">今日已学</span>
-             <span className="text-2xl font-cartoon text-blue-800">{daily.learned} 词</span>
-          </div>
-          <button onClick={() => setView(AppView.STATS)} className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-6 py-4 rounded-3xl font-bold flex items-center space-x-2 transition">
-             <span>📈 查看成长统计</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-8">
+          <button 
+            onClick={() => handleUnitSelect('all')}
+            className="p-8 bg-blue-600 text-white rounded-[2rem] font-cartoon text-3xl shadow-lg hover:scale-[1.03] transition border-b-8 border-blue-800 flex flex-col items-center justify-center"
+          >
+            <span>全部单词</span>
+            <span className="text-sm font-sans mt-2 opacity-80">All Words</span>
           </button>
-        </div>
-
-        <div className="mb-8 flex flex-col items-center space-y-3">
-          <span className="font-bold text-blue-800 text-lg">设置目标: 每次挑战单词量</span>
-          <div className="flex space-x-2">
-            {[5, 10, 20, 50, 'all'].map(len => (
-              <button
-                key={len}
-                onClick={() => setSessionLength(len as any)}
-                className={`px-4 h-12 rounded-full font-bold transition flex items-center justify-center ${sessionLength === len ? 'bg-blue-500 text-white scale-110 shadow-lg' : 'bg-white text-blue-400 hover:bg-blue-50 shadow-sm'}`}
+          {units.map(unit => {
+            const unitWords = MOCK_WORDS.filter(w => w.grade === selectedGrade && w.unit === unit);
+            const testedUnitWords = unitWords.filter(w => testedWordIds.includes(w.id)).length;
+            const isDone = testedUnitWords === unitWords.length && unitWords.length > 0;
+            const isWelcome = unit === 0;
+            
+            return (
+              <button 
+                key={unit}
+                onClick={() => handleUnitSelect(unit)}
+                className={`relative p-8 rounded-[2rem] font-cartoon text-3xl shadow-md transition border-4 group flex flex-col items-center justify-center ${isDone ? 'bg-green-50 border-green-200 text-green-700' : isWelcome ? 'bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100' : 'bg-white border-blue-100 text-blue-800 hover:bg-blue-50'}`}
               >
-                {len === 'all' ? '全部' : len}
+                {isWelcome ? 'Welcome' : `Unit ${unit}`}
+                <div className="text-sm text-gray-400 mt-2 font-sans font-bold group-hover:text-blue-500 transition">
+                  {testedUnitWords}/{unitWords.length} 已背
+                </div>
+                {isDone && <div className="absolute -top-2 -right-2 bg-green-500 text-white p-1 rounded-full text-xs shadow-sm">✓</div>}
+                {isWelcome && <div className="absolute top-2 left-2 text-xl">🎉</div>}
               </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-10">
-          <button onClick={() => setView(AppView.GRADE_SELECT)} className="bg-blue-600 hover:bg-blue-700 text-white font-cartoon text-3xl px-12 py-5 rounded-full shadow-2xl transition hover:scale-105 border-b-8 border-blue-800">开始挑战 🚀</button>
-          <button onClick={() => setView(AppView.WRONG_BOOK)} className="bg-red-500 hover:bg-red-600 text-white font-cartoon text-3xl px-12 py-5 rounded-full shadow-2xl transition hover:scale-105 border-b-8 border-red-800">错题本 ({wrongWords.length})</button>
+            );
+          })}
         </div>
       </div>
     );
   };
 
-  const renderGradeSelect = () => (
-    <div className="max-w-6xl mx-auto px-4 py-12">
-      <div className="flex items-center space-x-4 mb-12">
-        <button onClick={() => setView(AppView.WELCOME)} className="bg-white p-3 rounded-full shadow-md text-blue-600 hover:scale-110 transition"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
-        <h2 className="text-4xl font-cartoon text-blue-600">选择你的年级</h2>
+  const renderModeSelect = () => (
+    <div className="max-w-2xl mx-auto px-4 py-12 animate-fade-in text-center">
+      <div className="flex items-center space-x-4 mb-12 text-left">
+        <button onClick={() => setView(AppView.UNIT_SELECT)} className="bg-white p-3 rounded-full shadow-md text-blue-600 hover:scale-110 transition"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
+        <h2 className="text-4xl font-cartoon text-blue-600">挑战模式</h2>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-        {GRADES.map(grade => (
-          <GradeCard key={grade} grade={grade} isSelected={selectedGrade === grade} onClick={handleGradeSelect} />
-        ))}
+      
+      <div className="grid grid-cols-1 gap-6">
+        <button 
+          onClick={() => startSession(selectedGrade!, selectedUnit!, 'ENG_TO_CHI', sessionLength)}
+          className="bg-white p-10 rounded-[3rem] shadow-xl border-4 border-blue-100 hover:border-blue-400 transition transform hover:scale-105 group"
+        >
+          <div className="text-7xl mb-4 group-hover:rotate-12 transition">🔍</div>
+          <h3 className="text-3xl font-cartoon text-blue-800 mb-2">看英选意</h3>
+          <p className="text-gray-400">阅读英文，选择中文意思</p>
+        </button>
+
+        <button 
+          onClick={() => startSession(selectedGrade!, selectedUnit!, 'CHI_TO_ENG', sessionLength)}
+          className="bg-white p-10 rounded-[3rem] shadow-xl border-4 border-green-100 hover:border-green-400 transition transform hover:scale-105 group"
+        >
+          <div className="text-7xl mb-4 group-hover:-rotate-12 transition">✍️</div>
+          <h3 className="text-3xl font-cartoon text-green-800 mb-2">看中拼英</h3>
+          <p className="text-gray-400">阅读中文，拼写英文单词</p>
+        </button>
       </div>
     </div>
   );
@@ -241,43 +319,42 @@ const App: React.FC = () => {
     if (!word) return null;
 
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-blue-800 font-bold">闯关进度 {currentWordIndex + 1}/{sessionWords.length}</span>
-            <div className="flex space-x-1 overflow-x-auto pb-2">
-               {sessionWords.length <= 20 && Array.from({length: sessionWords.length}).map((_, i) => (
-                 <div key={i} className={`flex-shrink-0 w-3 h-3 rounded-full ${i < currentWordIndex ? 'bg-green-400' : i === currentWordIndex ? 'bg-blue-400 animate-pulse' : 'bg-gray-200'}`}></div>
-               ))}
-               {sessionWords.length > 20 && <div className="text-blue-500 font-bold text-sm">挑战海量词库中...</div>}
-            </div>
+      <div className="max-w-4xl mx-auto px-4 py-8 animate-fade-in">
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-blue-800 font-bold bg-white px-4 py-1 rounded-full shadow-sm">
+              进度 {currentWordIndex + 1} / {sessionWords.length}
+            </span>
+            <span className="text-green-600 font-bold">{word.unit === 0 ? 'Welcome' : `Unit ${word.unit}`} | {quizMode === 'ENG_TO_CHI' ? '看英选意' : '看中拼英'}</span>
+          </div>
+          <div className="w-full bg-gray-200 h-4 rounded-full overflow-hidden shadow-inner border border-white">
+            <div 
+              className="bg-blue-500 h-full transition-all duration-500" 
+              style={{ width: `${((currentWordIndex + 1) / sessionWords.length) * 100}%` }}
+            ></div>
           </div>
         </div>
 
-        <div className="flex flex-wrap justify-center mb-6 gap-2">
-           <button onClick={() => { setQuizMode('ENG_TO_CHI'); setQuizFeedback(null); setExplanation(null); }} className={`px-4 py-2 rounded-full font-bold transition ${quizMode === 'ENG_TO_CHI' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-400'}`}>看英选中</button>
-           <button onClick={() => { setQuizMode('CHI_TO_ENG'); setQuizFeedback(null); setExplanation(null); }} className={`px-4 py-2 rounded-full font-bold transition ${quizMode === 'CHI_TO_ENG' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-400'}`}>看中拼英</button>
-           <button onClick={() => { setQuizMode('VISUAL_TO_ENG'); setQuizFeedback(null); setExplanation(null); }} className={`px-4 py-2 rounded-full font-bold transition ${quizMode === 'VISUAL_TO_ENG' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-400'}`}>看图拼英 🎨</button>
-        </div>
-
-        <div className={`bg-white rounded-[3rem] shadow-2xl p-10 border-8 transition-all duration-300 transform ${quizFeedback === 'correct' ? 'border-green-400 scale-102' : quizFeedback === 'wrong' ? 'border-red-400' : 'border-blue-200'}`}>
-          <div className="text-center mb-8">
-            <h2 className="text-7xl md:text-8xl font-bold text-blue-800 mb-4">
-              {quizMode === 'ENG_TO_CHI' ? word.english : quizMode === 'CHI_TO_ENG' ? word.chinese : (word.emoji || '❓')}
+        <div className={`bg-white rounded-[3.5rem] shadow-2xl p-12 border-8 transition-all duration-300 transform ${quizFeedback === 'correct' ? 'border-green-400 scale-[1.01]' : quizFeedback === 'wrong' ? 'border-red-400' : 'border-blue-100'}`}>
+          <div className="text-center mb-10">
+            <h2 className={`font-bold text-blue-900 mb-6 tracking-tight ${word.english.length > 10 ? 'text-5xl md:text-6xl' : 'text-7xl md:text-8xl'}`}>
+              {quizMode === 'ENG_TO_CHI' ? word.english : word.chinese}
             </h2>
-            <button onClick={() => speak(word.english)} className="text-blue-400 font-bold hover:scale-110 transition flex items-center justify-center mx-auto space-x-2">
-               <span>🔊</span> <span>{word.phonetic}</span>
-            </button>
+            <div className="flex items-center justify-center space-x-3">
+               <button onClick={() => speak(word.english)} className="bg-blue-50 text-blue-500 w-12 h-12 rounded-full flex items-center justify-center hover:bg-blue-100 transition shadow-sm active:scale-90">🔊</button>
+               <span className="text-gray-400 font-bold text-xl">{word.phonetic}</span>
+               {word.emoji && <span className="text-4xl ml-2">{word.emoji}</span>}
+            </div>
           </div>
 
           {quizMode === 'ENG_TO_CHI' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {options.map((opt, i) => (
                 <button
                   key={i}
                   disabled={quizFeedback !== null}
                   onClick={() => handleQuizAnswer(opt)}
-                  className={`p-6 text-2xl font-bold rounded-3xl border-4 transition transform active:scale-95 ${quizFeedback === 'correct' && opt === word.chinese ? 'bg-green-100 border-green-400 text-green-700' : quizFeedback === 'wrong' && opt === word.chinese ? 'bg-green-50 border-green-200 text-green-600 animate-pulse' : 'bg-blue-50 border-blue-100 text-blue-700 hover:bg-blue-100'}`}
+                  className={`p-6 text-2xl font-bold rounded-3xl border-4 transition transform active:scale-95 ${quizFeedback === 'correct' && opt === word.chinese ? 'bg-green-100 border-green-500 text-green-700 shadow-lg' : quizFeedback === 'wrong' && opt === word.chinese ? 'bg-green-50 border-green-300 text-green-600 animate-pulse' : 'bg-gray-50 border-gray-100 text-blue-800 hover:border-blue-300 hover:bg-white shadow-sm'}`}
                 >
                   {opt}
                 </button>
@@ -292,105 +369,109 @@ const App: React.FC = () => {
                 value={userAnswer}
                 onChange={(e) => setUserAnswer(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleQuizAnswer(userAnswer)}
-                placeholder="在此输入单词..."
-                className={`w-full max-w-md text-3xl font-bold p-6 border-4 rounded-3xl text-center mb-6 focus:border-blue-500 outline-none shadow-inner transition ${quizFeedback === 'wrong' ? 'border-red-400 bg-red-50 text-red-700' : 'border-blue-100'}`}
+                placeholder="在此输入英文单词..."
+                className={`w-full max-w-lg text-4xl font-bold p-8 border-4 rounded-[2rem] text-center mb-8 focus:border-blue-500 outline-none shadow-inner transition ${quizFeedback === 'wrong' ? 'border-red-400 bg-red-50 text-red-700' : 'border-blue-100 bg-blue-50 text-blue-800'}`}
               />
               {quizFeedback === 'wrong' && (
-                <div className="text-center space-y-4">
-                  <p className="text-red-500 font-bold text-2xl animate-bounce">正确答案：{word.english}</p>
-                  {aiLoading && <div className="text-blue-500 animate-pulse text-sm font-bold">AI 状元正在为你编写记忆口诀...</div>}
-                  {explanation && (
-                    <div className="bg-yellow-50 p-6 rounded-[2rem] border-2 border-yellow-200 text-left max-w-md mx-auto animate-fade-in shadow-inner">
-                      <p className="text-yellow-800 font-bold mb-2">💡 AI 记忆法：</p>
-                      <p className="text-sm text-yellow-900 mb-1"><strong>意思：</strong>{explanation.meaning}</p>
-                      <p className="text-sm text-yellow-900 mb-1"><strong>巧记：</strong>{explanation.mnemonic}</p>
-                      <p className="text-sm italic text-yellow-700 mt-2">"{explanation.funnySentence}"</p>
-                    </div>
-                  )}
+                <div className="text-center animate-fade-in mb-6">
+                  <p className="text-red-600 font-bold text-3xl mb-4">哎呀！正确拼写：<span className="underline decoration-green-500">{word.english}</span></p>
                 </div>
               )}
               {!quizFeedback && (
                 <button
                   onClick={() => handleQuizAnswer(userAnswer)}
-                  className="bg-blue-600 text-white px-12 py-4 rounded-2xl font-cartoon text-2xl shadow-lg hover:bg-blue-700 transition active:scale-95"
+                  className="bg-blue-600 text-white px-16 py-5 rounded-2xl font-cartoon text-3xl shadow-xl hover:bg-blue-700 transition active:scale-95 border-b-8 border-blue-900"
                 >
-                  检查对错
+                  确认
                 </button>
               )}
             </div>
           )}
 
-          <div className="mt-8 flex justify-center">
-            <Mascot message={quizFeedback === 'correct' ? '太棒了！继续保持！' : quizFeedback === 'wrong' ? '没关系，这个词我们记在错题本里啦！' : '加油，你离状元又近了一步！'} />
+          {quizFeedback === 'wrong' && (
+            <div className="mt-8 border-t-2 border-red-50 pt-8 animate-fade-in">
+              {aiLoading ? (
+                <div className="flex items-center justify-center space-x-2 text-blue-500 font-bold animate-pulse">
+                   <span>✨</span><span>AI 老师正在为你编写记忆法...</span>
+                </div>
+              ) : explanation && (
+                <div className="bg-yellow-50 p-8 rounded-[2.5rem] border-2 border-yellow-200 text-left shadow-inner">
+                  <p className="text-yellow-900 font-bold mb-3 flex items-center">
+                     <span className="mr-2">💡</span> 状元记忆法：
+                  </p>
+                  <p className="text-gray-800 mb-2 font-medium"><strong>意思：</strong>{explanation.meaning}</p>
+                  <p className="text-gray-800 mb-4 font-medium"><strong>巧记：</strong>{explanation.mnemonic}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-10 flex justify-center">
+            <Mascot message={quizFeedback === 'correct' ? '真棒！这一关稳了！' : quizFeedback === 'wrong' ? '别灰心，新版教材核心词再看一眼！' : '加油小状元，全神贯注！'} />
           </div>
         </div>
       </div>
     );
   };
 
-  const renderStats = () => {
-    const daily = getStatsForRange(1);
-    const weekly = getStatsForRange(7);
-    const all = getStatsForRange('all');
-
+  const renderReport = () => {
+    const accuracy = Math.round((correctInSession / (correctInSession + wrongInSession)) * 100) || 0;
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <div className="flex items-center space-x-4 mb-8">
-           <button onClick={() => setView(AppView.WELCOME)} className="bg-white p-3 rounded-full shadow-md text-blue-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
-           <h2 className="text-4xl font-cartoon text-blue-600">我的学习足迹 👣</h2>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          {[
-            { label: '今日战果', data: daily, color: 'bg-blue-500' },
-            { label: '本周积累', data: weekly, color: 'bg-green-500' },
-            { label: '全部成就', data: all, color: 'bg-orange-500' },
-          ].map((stat, i) => (
-            <div key={i} className="bg-white rounded-3xl shadow-xl p-6 border-t-8 border-blue-100">
-               <h3 className={`text-xl font-cartoon mb-4 ${stat.color.replace('bg-', 'text-')}`}>{stat.label}</h3>
-               <div className="space-y-4">
-                  <div>
-                    <p className="text-gray-400 text-xs">已背词数</p>
-                    <p className="text-3xl font-bold text-gray-800">{stat.data.learned}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400 text-xs">错题记录</p>
-                    <p className="text-xl font-bold text-red-400">{stat.data.errors}</p>
-                  </div>
-               </div>
-            </div>
-          ))}
+      <div className="max-w-2xl mx-auto px-4 py-16 text-center animate-fade-in">
+        <div className="bg-white rounded-[4rem] shadow-2xl p-16 border-8 border-yellow-400 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-blue-400 via-yellow-400 to-green-400"></div>
+          <div className="text-9xl mb-10 animate-bounce">🎖️</div>
+          <h2 className="text-5xl font-cartoon text-blue-600 mb-8">闯关成功！</h2>
+          <div className="grid grid-cols-2 gap-6 mb-12">
+             <div className="bg-blue-50 p-8 rounded-3xl border border-blue-100 shadow-sm">
+                <p className="text-gray-400 font-bold mb-2">本次过关单词</p>
+                <p className="text-5xl font-cartoon text-blue-600">{sessionWords.length}</p>
+             </div>
+             <div className="bg-green-50 p-8 rounded-3xl border border-green-100 shadow-sm">
+                <p className="text-gray-400 font-bold mb-2">本场正确率</p>
+                <p className="text-5xl font-cartoon text-green-600">{accuracy}%</p>
+             </div>
+          </div>
+          <div className="flex flex-col space-y-6">
+             <button onClick={() => setView(AppView.UNIT_SELECT)} className="w-full bg-blue-600 text-white font-cartoon text-4xl py-6 rounded-3xl shadow-2xl hover:scale-[1.02] transition border-b-8 border-blue-900">去闯下一关</button>
+             <button onClick={() => setView(AppView.WELCOME)} className="w-full bg-gray-100 text-gray-500 font-cartoon text-3xl py-5 rounded-3xl hover:bg-gray-200 transition">回到主页</button>
+          </div>
         </div>
       </div>
     );
   };
 
   const renderWrongBook = () => (
-    <div className="max-w-6xl mx-auto px-4 py-12">
-      <div className="flex justify-between items-center mb-8">
-        <button onClick={() => setView(AppView.WELCOME)} className="bg-white p-3 rounded-full shadow-md text-blue-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
-        <h2 className="text-4xl font-cartoon text-red-600">错题加油站 ⛽</h2>
-        <button onClick={startWrongBookSession} disabled={wrongWords.length === 0} className="bg-green-500 text-white px-8 py-3 rounded-full font-bold shadow-lg disabled:opacity-50 hover:bg-green-600">消灭错题</button>
+    <div className="max-w-6xl mx-auto px-4 py-12 animate-fade-in">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
+        <div className="flex items-center space-x-4">
+          <button onClick={() => setView(AppView.WELCOME)} className="bg-white p-3 rounded-full shadow-md text-blue-600 hover:scale-110 transition"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
+          <h2 className="text-4xl font-cartoon text-red-600">错题加油站 ⛽</h2>
+        </div>
+        <div className="flex flex-wrap justify-center gap-3">
+           <button onClick={() => startWrongBookSession('ENG_TO_CHI')} disabled={wrongWords.length === 0} className="bg-blue-500 text-white px-8 py-4 rounded-full font-bold shadow-lg disabled:opacity-50 hover:bg-blue-600 transition">英选意复习</button>
+           <button onClick={() => startWrongBookSession('CHI_TO_ENG')} disabled={wrongWords.length === 0} className="bg-green-500 text-white px-8 py-4 rounded-full font-bold shadow-lg disabled:opacity-50 hover:bg-green-600 transition">中拼英复习</button>
+        </div>
       </div>
       
       {wrongWords.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-[3rem] shadow-inner border-4 border-dashed border-gray-100">
-           <p className="text-gray-400 text-2xl font-bold">目前没有错题，你真是太厉害了！🏆</p>
+        <div className="text-center py-24 bg-white rounded-[4rem] shadow-inner border-4 border-dashed border-gray-200">
+           <p className="text-gray-400 text-3xl font-cartoon">笔记本干干净净，你是真正的状元！🎖️</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {wrongWords.map(w => (
-            <div key={w.id} className="bg-white p-6 rounded-3xl shadow-md border-4 border-red-50 relative group hover:border-red-200 transition">
-              <div className="absolute top-4 right-4 flex space-x-1">
+            <div key={w.id} className="bg-white p-8 rounded-[2rem] shadow-md border-4 border-red-50 hover:border-red-200 transition group relative">
+              <div className="absolute top-6 right-6 flex space-x-1">
                 {[1, 2, 3].map(i => (
-                  <div key={i} className={`w-3 h-3 rounded-full shadow-sm ${w.consecutiveCorrectCount >= i ? 'bg-green-400' : 'bg-gray-200'}`}></div>
+                  <div key={i} className={`w-3 h-3 rounded-full ${w.consecutiveCorrectCount >= i ? 'bg-green-400 shadow-sm' : 'bg-gray-100'}`}></div>
                 ))}
               </div>
-              <h4 className="text-3xl font-bold text-gray-800">{w.english}</h4>
-              <p className="text-gray-500 text-lg mb-2">{w.chinese}</p>
-              <div className="flex items-center space-x-2">
-                 <button onClick={() => speak(w.english)} className="text-blue-500">🔊</button>
-                 <span className="bg-blue-50 text-blue-400 text-xs px-2 py-1 rounded font-bold">掌握度 {Math.round((w.consecutiveCorrectCount/3)*100)}%</span>
+              <h4 className="text-3xl font-bold text-gray-800 mb-2">{w.english}</h4>
+              <p className="text-gray-500 text-xl mb-4">{w.chinese}</p>
+              <div className="flex items-center space-x-3">
+                 <button onClick={() => speak(w.english)} className="text-blue-500 text-2xl hover:scale-125 transition active:scale-90">🔊</button>
+                 <span className="text-xs text-gray-400 font-bold uppercase">{w.unit === 0 ? 'Welcome' : `Unit ${w.unit}`} | {w.grade}年级</span>
               </div>
             </div>
           ))}
@@ -399,33 +480,17 @@ const App: React.FC = () => {
     </div>
   );
 
-  const renderReport = () => {
-    const accuracy = Math.round((correctInSession / (correctInSession + wrongInSession)) * 100) || 0;
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-        <div className="bg-white rounded-[4rem] shadow-2xl p-12 border-8 border-yellow-400 animate-fade-in relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-400 via-yellow-400 to-green-400"></div>
-          <div className="text-9xl mb-8 animate-bounce">🎖️</div>
-          <h2 className="text-5xl font-cartoon text-blue-600 mb-6">闯关结束！</h2>
-          
-          <div className="grid grid-cols-2 gap-4 mb-10">
-             <div className="bg-blue-50 p-6 rounded-3xl">
-                <p className="text-gray-400 text-sm">挑战词数</p>
-                <p className="text-4xl font-cartoon text-blue-600">{sessionWords.length}</p>
-             </div>
-             <div className="bg-green-50 p-6 rounded-3xl">
-                <p className="text-gray-400 text-sm">正确率</p>
-                <p className="text-4xl font-cartoon text-green-600">{accuracy}%</p>
-             </div>
-          </div>
-
-          <div className="flex flex-col space-y-4">
-             <button onClick={() => startSession(selectedGrade || 1, sessionLength)} className="w-full bg-blue-600 text-white font-cartoon text-3xl py-5 rounded-3xl shadow-xl hover:scale-102 transition border-b-8 border-blue-800">继续挑战</button>
-             <button onClick={() => setView(AppView.WELCOME)} className="w-full bg-gray-100 text-gray-600 font-cartoon text-2xl py-4 rounded-3xl hover:bg-gray-200 transition">返回主页</button>
-          </div>
-        </div>
-      </div>
-    );
+  const startWrongBookSession = (mode: QuizMode) => {
+    const shuffled = [...wrongWords].sort(() => 0.5 - Math.random());
+    setSessionWords(shuffled);
+    setQuizMode(mode);
+    setCurrentWordIndex(0);
+    setCorrectInSession(0);
+    setWrongInSession(0);
+    setView(AppView.QUIZ);
+    setExplanation(null);
+    setQuizFeedback(null);
+    setUserAnswer('');
   };
 
   return (
@@ -433,35 +498,37 @@ const App: React.FC = () => {
       <div className="blob -top-20 -left-20"></div>
       <div className="blob top-1/2 -right-20 opacity-50"></div>
       
-      <header className="sticky top-0 z-50 bg-white bg-opacity-80 backdrop-blur-md px-6 py-4 flex justify-between items-center shadow-sm">
-        <div className="flex items-center space-x-2 cursor-pointer" onClick={() => setView(AppView.WELCOME)}>
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-cartoon text-2xl shadow-lg transform rotate-6">W</div>
-          <span className="text-xl font-cartoon text-blue-800">西城小状元</span>
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md px-8 py-5 flex justify-between items-center shadow-sm border-b border-blue-50">
+        <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setView(AppView.WELCOME)}>
+          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-cartoon text-3xl shadow-lg transform rotate-6 group-hover:rotate-0 transition-transform">★</div>
+          <span className="text-2xl font-cartoon text-blue-800 tracking-tight">西城小状元</span>
         </div>
-        <div className="flex items-center space-x-3">
-          <div className="bg-white px-4 py-1.5 rounded-full shadow-inner border flex items-center space-x-2">
-             <span className="text-red-500 font-bold">📕 {wrongWords.length}</span>
-             <div className="w-px h-4 bg-gray-200"></div>
-             <span className="text-yellow-500 font-bold">⭐ {learningHistory.reduce((a,b)=>a+b.wordsLearned,0)}</span>
+        <div className="flex items-center space-x-4">
+          <div className="bg-white px-5 py-2 rounded-full shadow-inner border border-blue-50 flex items-center space-x-4">
+             <div className="flex items-center space-x-1" title="待复习错题">
+                <span className="text-red-500 font-bold">📕 {wrongWords.length}</span>
+             </div>
+             <div className="w-px h-5 bg-gray-200"></div>
+             <div className="flex items-center space-x-1" title="已过关单词">
+                <span className="text-yellow-600 font-bold">⭐ {testedWordIds.length}</span>
+             </div>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto max-w-7xl pt-4">
+      <main className="container mx-auto max-w-7xl pt-8">
         {view === AppView.WELCOME && renderWelcome()}
         {view === AppView.GRADE_SELECT && renderGradeSelect()}
+        {view === AppView.UNIT_SELECT && renderUnitSelect()}
+        {view === AppView.MODE_SELECT && renderModeSelect()}
         {view === AppView.QUIZ && renderQuiz()}
         {view === AppView.REPORT && renderReport()}
         {view === AppView.WRONG_BOOK && renderWrongBook()}
-        {view === AppView.STATS && renderStats()}
       </main>
 
       <style>{`
-        @keyframes bounce-slow { 0%, 100% { transform: translateY(-5%); } 50% { transform: translateY(0); } }
-        .animate-bounce-slow { animation: bounce-slow 3s infinite; }
-        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
-        .scale-102 { transform: scale(1.02); }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       `}</style>
     </div>
   );
