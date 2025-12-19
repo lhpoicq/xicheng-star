@@ -1,0 +1,8 @@
+
+{
+  "name": "西城英语小状元 - Xicheng English Star",
+  "description": "专为北京市西城区1-6年级小学生设计的趣味背单词应用，采用卡通风格，结合AI大模型提供生动的单词解析和趣味例句。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
