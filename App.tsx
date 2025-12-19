@@ -65,12 +65,18 @@ const App: React.FC = () => {
 
   const handleGradeSelect = (grade: number) => {
     setSelectedGrade(grade);
+    setSelectedUnit(null); // Reset selection when grade changes
     setView(AppView.UNIT_SELECT);
   };
 
-  const handleUnitSelect = (unit: number | 'all') => {
+  const handleUnitClick = (unit: number | 'all') => {
     setSelectedUnit(unit);
-    setView(AppView.MODE_SELECT);
+  };
+
+  const proceedToModeSelect = () => {
+    if (selectedUnit !== null) {
+      setView(AppView.MODE_SELECT);
+    }
   };
 
   const startSession = (grade: number, unit: number | 'all', mode: QuizMode, length: number | 'all') => {
@@ -79,7 +85,6 @@ const App: React.FC = () => {
       pool = pool.filter(w => w.unit === unit);
     }
 
-    // Filter logic: priorize untested words
     let availableWords = pool.filter(w => !testedWordIds.includes(w.id));
     
     if (availableWords.length === 0) {
@@ -136,9 +141,7 @@ const App: React.FC = () => {
       setQuizFeedback('correct');
       setCorrectInSession(prev => prev + 1);
       speak(currentWord.english);
-      
       setTestedWordIds(prev => Array.from(new Set([...prev, currentWord.id])));
-
       setWrongWords(prev => {
         const existing = prev.find(w => w.id === currentWord.id);
         if (existing) {
@@ -147,25 +150,21 @@ const App: React.FC = () => {
         }
         return prev;
       });
-
       setTimeout(moveToNext, 800);
     } else {
       setQuizFeedback('wrong');
       setWrongInSession(prev => prev + 1);
       speak("Oops");
-      
       setWrongWords(prev => {
         const existing = prev.find(w => w.id === currentWord.id);
         if (existing) return prev.map(w => w.id === currentWord.id ? { ...w, consecutiveCorrectCount: 0 } : w);
         return [...prev, { ...currentWord, consecutiveCorrectCount: 0 }];
       });
-
       setAiLoading(true);
       getWordExplanation(currentWord.english, selectedGrade || 1).then(res => {
         setExplanation(res);
         setAiLoading(false);
       });
-
       setTimeout(moveToNext, 4500);
     }
   };
@@ -188,7 +187,6 @@ const App: React.FC = () => {
         </div>
       </div>
       <h1 className="text-5xl md:text-7xl font-cartoon text-blue-600 mb-6 drop-shadow-md">西城英语小状元</h1>
-      
       <div className="mb-10 flex flex-col items-center space-y-4">
         <div className="bg-white px-8 py-3 rounded-full shadow-sm border border-blue-50">
            <span className="text-blue-800 font-bold">同步北京市西城区教材：外研版(一起点)</span>
@@ -206,12 +204,10 @@ const App: React.FC = () => {
           ))}
         </div>
       </div>
-
       <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6">
         <button onClick={() => setView(AppView.GRADE_SELECT)} className="bg-blue-600 hover:bg-blue-700 text-white font-cartoon text-3xl px-14 py-6 rounded-full shadow-2xl transition hover:scale-105 border-b-8 border-blue-900">同步闯关 🚀</button>
         <button onClick={() => setView(AppView.WRONG_BOOK)} className="bg-red-500 hover:bg-red-600 text-white font-cartoon text-3xl px-14 py-6 rounded-full shadow-2xl transition hover:scale-105 border-b-8 border-red-900">错题本 ({wrongWords.length})</button>
       </div>
-
       <button onClick={resetProgress} className="mt-12 text-gray-400 text-sm hover:text-red-400 underline transition">
         重置过关进度 (当前过关: {testedWordIds.length})
       </button>
@@ -245,7 +241,7 @@ const App: React.FC = () => {
   const renderUnitSelect = () => {
     const units = Array.from(new Set(MOCK_WORDS.filter(w => w.grade === selectedGrade).map(w => w.unit))).sort((a, b) => a - b);
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12 animate-fade-in text-center">
+      <div className="max-w-4xl mx-auto px-4 py-12 animate-fade-in text-center pb-32">
         <div className="flex items-center space-x-4 mb-12 text-left">
           <button onClick={() => setView(AppView.GRADE_SELECT)} className="bg-white p-3 rounded-full shadow-md text-blue-600 hover:scale-110 transition"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
           <h2 className="text-4xl font-cartoon text-blue-600">{selectedGrade}年级 - 选择单元</h2>
@@ -253,43 +249,72 @@ const App: React.FC = () => {
         
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-8">
           <button 
-            onClick={() => handleUnitSelect('all')}
-            className="p-8 bg-blue-600 text-white rounded-[2rem] font-cartoon text-3xl shadow-lg hover:scale-[1.03] transition border-b-8 border-blue-800 flex flex-col items-center justify-center"
+            onClick={() => handleUnitClick('all')}
+            className={`p-8 rounded-[2rem] font-cartoon text-3xl shadow-lg transition transform hover:scale-[1.03] border-4 flex flex-col items-center justify-center ${selectedUnit === 'all' ? 'bg-blue-600 text-white border-yellow-400 border-[6px]' : 'bg-blue-100 text-blue-800 border-transparent'}`}
           >
             <span>全部单词</span>
             <span className="text-sm font-sans mt-2 opacity-80">All Words</span>
+            {selectedUnit === 'all' && <div className="mt-2 text-sm bg-yellow-400 text-blue-900 px-3 py-1 rounded-full">已选中</div>}
           </button>
           {units.map(unit => {
             const unitWords = MOCK_WORDS.filter(w => w.grade === selectedGrade && w.unit === unit);
             const testedUnitWords = unitWords.filter(w => testedWordIds.includes(w.id)).length;
             const isDone = testedUnitWords === unitWords.length && unitWords.length > 0;
             const isWelcome = unit === 0;
+            const isSelected = selectedUnit === unit;
             
             return (
               <button 
                 key={unit}
-                onClick={() => handleUnitSelect(unit)}
-                className={`relative p-8 rounded-[2rem] font-cartoon text-3xl shadow-md transition border-4 group flex flex-col items-center justify-center ${isDone ? 'bg-green-50 border-green-200 text-green-700' : isWelcome ? 'bg-yellow-50 border-yellow-200 text-yellow-800 hover:bg-yellow-100' : 'bg-white border-blue-100 text-blue-800 hover:bg-blue-50'}`}
+                onClick={() => handleUnitClick(unit)}
+                className={`relative p-8 rounded-[2rem] font-cartoon text-3xl shadow-md transition border-[6px] group flex flex-col items-center justify-center ${isSelected ? 'border-yellow-400 bg-blue-50 scale-[1.05] z-10' : 'border-transparent bg-white hover:bg-blue-50'}`}
               >
-                {isWelcome ? 'Welcome' : `Unit ${unit}`}
+                <span className={isSelected ? 'text-blue-600' : isDone ? 'text-green-700' : isWelcome ? 'text-yellow-800' : 'text-blue-800'}>
+                  {isWelcome ? 'Welcome' : `Unit ${unit}`}
+                </span>
                 <div className="text-sm text-gray-400 mt-2 font-sans font-bold group-hover:text-blue-500 transition">
                   {testedUnitWords}/{unitWords.length} 已背
                 </div>
                 {isDone && <div className="absolute -top-2 -right-2 bg-green-500 text-white p-1 rounded-full text-xs shadow-sm">✓</div>}
-                {isWelcome && <div className="absolute top-2 left-2 text-xl">🎉</div>}
+                {isWelcome && !isSelected && <div className="absolute top-2 left-2 text-xl">🎉</div>}
+                {isSelected && (
+                  <div className="absolute -top-4 bg-yellow-400 text-blue-900 px-4 py-1 rounded-full text-sm font-bold shadow-md animate-bounce">
+                    已选定！
+                  </div>
+                )}
               </button>
             );
           })}
         </div>
+
+        {/* Floating Confirm Button */}
+        {selectedUnit !== null && (
+          <div className="fixed bottom-10 left-0 w-full flex justify-center px-4 animate-fade-in z-50">
+            <button 
+              onClick={proceedToModeSelect}
+              className="bg-green-500 hover:bg-green-600 text-white font-cartoon text-4xl px-20 py-6 rounded-full shadow-[0_15px_30px_rgba(34,197,94,0.4)] transition-all hover:scale-105 active:scale-95 border-b-8 border-green-800 flex items-center space-x-4"
+            >
+              <span>确认进入 {selectedUnit === 'all' ? '全部单词' : selectedUnit === 0 ? 'Welcome' : `Unit ${selectedUnit}`}</span>
+              <span className="text-5xl">🚀</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   };
 
   const renderModeSelect = () => (
     <div className="max-w-2xl mx-auto px-4 py-12 animate-fade-in text-center">
-      <div className="flex items-center space-x-4 mb-12 text-left">
+      <div className="flex items-center space-x-4 mb-6 text-left">
         <button onClick={() => setView(AppView.UNIT_SELECT)} className="bg-white p-3 rounded-full shadow-md text-blue-600 hover:scale-110 transition"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
         <h2 className="text-4xl font-cartoon text-blue-600">挑战模式</h2>
+      </div>
+
+      <div className="mb-10 p-4 bg-blue-50 rounded-3xl border-2 border-blue-100 flex items-center justify-center space-x-3">
+         <span className="text-blue-400 text-2xl">📍</span>
+         <span className="text-blue-800 font-bold text-xl">
+           当前选择：{selectedGrade}年级 - {selectedUnit === 'all' ? '全部单词' : selectedUnit === 0 ? 'Welcome 单元' : `Unit ${selectedUnit}`}
+         </span>
       </div>
       
       <div className="grid grid-cols-1 gap-6">
@@ -301,7 +326,6 @@ const App: React.FC = () => {
           <h3 className="text-3xl font-cartoon text-blue-800 mb-2">看英选意</h3>
           <p className="text-gray-400">阅读英文，选择中文意思</p>
         </button>
-
         <button 
           onClick={() => startSession(selectedGrade!, selectedUnit!, 'CHI_TO_ENG', sessionLength)}
           className="bg-white p-10 rounded-[3rem] shadow-xl border-4 border-green-100 hover:border-green-400 transition transform hover:scale-105 group"
@@ -317,7 +341,6 @@ const App: React.FC = () => {
   const renderQuiz = () => {
     const word = sessionWords[currentWordIndex];
     if (!word) return null;
-
     return (
       <div className="max-w-4xl mx-auto px-4 py-8 animate-fade-in">
         <div className="mb-8">
@@ -334,7 +357,6 @@ const App: React.FC = () => {
             ></div>
           </div>
         </div>
-
         <div className={`bg-white rounded-[3.5rem] shadow-2xl p-12 border-8 transition-all duration-300 transform ${quizFeedback === 'correct' ? 'border-green-400 scale-[1.01]' : quizFeedback === 'wrong' ? 'border-red-400' : 'border-blue-100'}`}>
           <div className="text-center mb-10">
             <h2 className={`font-bold text-blue-900 mb-6 tracking-tight ${word.english.length > 10 ? 'text-5xl md:text-6xl' : 'text-7xl md:text-8xl'}`}>
@@ -346,7 +368,6 @@ const App: React.FC = () => {
                {word.emoji && <span className="text-4xl ml-2">{word.emoji}</span>}
             </div>
           </div>
-
           {quizMode === 'ENG_TO_CHI' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {options.map((opt, i) => (
@@ -387,7 +408,6 @@ const App: React.FC = () => {
               )}
             </div>
           )}
-
           {quizFeedback === 'wrong' && (
             <div className="mt-8 border-t-2 border-red-50 pt-8 animate-fade-in">
               {aiLoading ? (
@@ -405,7 +425,6 @@ const App: React.FC = () => {
               )}
             </div>
           )}
-
           <div className="mt-10 flex justify-center">
             <Mascot message={quizFeedback === 'correct' ? '真棒！这一关稳了！' : quizFeedback === 'wrong' ? '别灰心，新版教材核心词再看一眼！' : '加油小状元，全神贯注！'} />
           </div>
@@ -453,7 +472,6 @@ const App: React.FC = () => {
            <button onClick={() => startWrongBookSession('CHI_TO_ENG')} disabled={wrongWords.length === 0} className="bg-green-500 text-white px-8 py-4 rounded-full font-bold shadow-lg disabled:opacity-50 hover:bg-green-600 transition">中拼英复习</button>
         </div>
       </div>
-      
       {wrongWords.length === 0 ? (
         <div className="text-center py-24 bg-white rounded-[4rem] shadow-inner border-4 border-dashed border-gray-200">
            <p className="text-gray-400 text-3xl font-cartoon">笔记本干干净净，你是真正的状元！🎖️</p>
@@ -497,7 +515,6 @@ const App: React.FC = () => {
     <div className="min-h-screen relative pb-20 overflow-x-hidden">
       <div className="blob -top-20 -left-20"></div>
       <div className="blob top-1/2 -right-20 opacity-50"></div>
-      
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md px-8 py-5 flex justify-between items-center shadow-sm border-b border-blue-50">
         <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setView(AppView.WELCOME)}>
           <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-cartoon text-3xl shadow-lg transform rotate-6 group-hover:rotate-0 transition-transform">★</div>
@@ -515,7 +532,6 @@ const App: React.FC = () => {
           </div>
         </div>
       </header>
-
       <main className="container mx-auto max-w-7xl pt-8">
         {view === AppView.WELCOME && renderWelcome()}
         {view === AppView.GRADE_SELECT && renderGradeSelect()}
@@ -525,7 +541,6 @@ const App: React.FC = () => {
         {view === AppView.REPORT && renderReport()}
         {view === AppView.WRONG_BOOK && renderWrongBook()}
       </main>
-
       <style>{`
         @keyframes fade-in { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
