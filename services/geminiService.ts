@@ -1,11 +1,17 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { AIExplanation } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+import { AIExplanation } from "../types.ts";
 
 export async function getWordExplanation(word: string, grade: number): Promise<AIExplanation | null> {
   try {
+    // Obtain API Key safely
+    const apiKey = (globalThis as any).process?.env?.API_KEY;
+    if (!apiKey) {
+      console.error("API_KEY is not defined in environment variables.");
+      return null;
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `针对小学${grade}年级的孩子，用最简单、有趣、卡通的口吻解释单词 "${word}"。`,
