@@ -11,6 +11,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [allUsers, setAllUsers] = useState<UserAccount[]>([]);
   const [authForm, setAuthForm] = useState({ username: '', password: '' });
+  const [editingPassword, setEditingPassword] = useState<{ [username: string]: string }>({});
 
   // --- 学习进度状态 ---
   const [view, setView] = useState<AppView>(AppView.LOGIN);
@@ -100,6 +101,10 @@ const App: React.FC = () => {
       alert('用户名已存在！');
       return;
     }
+    if (!authForm.username || !authForm.password) {
+      alert('请输入完整的用户名和密码');
+      return;
+    }
     const newUser: UserAccount = {
       username: authForm.username,
       password: authForm.password,
@@ -125,6 +130,40 @@ const App: React.FC = () => {
       const updated = allUsers.filter(u => u.username !== username);
       setAllUsers(updated);
       localStorage.setItem('xicheng_users', JSON.stringify(updated));
+    }
+  };
+
+  const changeUserPassword = (username: string) => {
+    const newPassword = editingPassword[username];
+    if (!newPassword || newPassword.trim() === '') {
+      alert('请输入新密码');
+      return;
+    }
+    
+    if (confirm(`确定要将用户 ${username} 的密码修改为 "${newPassword}" 吗？`)) {
+      const updatedUsers = allUsers.map(u => {
+        if (u.username === username) {
+          return { ...u, password: newPassword };
+        }
+        return u;
+      });
+      setAllUsers(updatedUsers);
+      localStorage.setItem('xicheng_users', JSON.stringify(updatedUsers));
+      
+      // 如果改的是当前登录账号（比如admin改自己的），也更新下session
+      if (currentUser && currentUser.username === username) {
+        const updatedMe = updatedUsers.find(u => u.username === username)!;
+        setCurrentUser(updatedMe);
+        sessionStorage.setItem('xicheng_current_session', JSON.stringify(updatedMe));
+      }
+      
+      // 清空输入状态
+      setEditingPassword(prev => {
+        const next = { ...prev };
+        delete next[username];
+        return next;
+      });
+      alert('密码修改成功！');
     }
   };
 
@@ -277,31 +316,48 @@ const App: React.FC = () => {
         <h2 className="text-4xl font-cartoon text-blue-600">管理中心</h2>
         <button onClick={() => setView(AppView.WELCOME)} className="bg-gray-100 px-6 py-2 rounded-full font-bold">返回</button>
       </div>
-      <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border-4 border-blue-50">
-        <table className="w-full text-left">
+      <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border-4 border-blue-50 overflow-x-auto">
+        <table className="w-full text-left min-w-[800px]">
           <thead className="bg-blue-50">
             <tr>
               <th className="p-6 font-cartoon text-xl text-blue-600">用户名</th>
               <th className="p-6 font-cartoon text-xl text-blue-600">已背单词</th>
               <th className="p-6 font-cartoon text-xl text-blue-600">错题数</th>
-              <th className="p-6 font-cartoon text-xl text-blue-600">角色</th>
+              <th className="p-6 font-cartoon text-xl text-blue-600">修改密码</th>
               <th className="p-6 font-cartoon text-xl text-blue-600">操作</th>
             </tr>
           </thead>
           <tbody>
             {allUsers.map(u => (
               <tr key={u.username} className="border-t border-gray-100 hover:bg-gray-50 transition">
-                <td className="p-6 font-bold text-gray-700">{u.username}</td>
+                <td className="p-6">
+                   <div className="flex items-center space-x-2">
+                     <span className="font-bold text-gray-700">{u.username}</span>
+                     {u.role === 'admin' && <span className="text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full font-black">ADMIN</span>}
+                   </div>
+                </td>
                 <td className="p-6 font-bold text-green-500">{u.progress.testedWordIds.length}</td>
                 <td className="p-6 font-bold text-red-500">{u.progress.wrongWords.length}</td>
                 <td className="p-6">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${u.role === 'admin' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
-                    {u.role}
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    <input 
+                      type="text" 
+                      placeholder="新密码" 
+                      className="border rounded px-2 py-1 text-sm w-32 outline-none focus:border-blue-400"
+                      value={editingPassword[u.username] || ''}
+                      onChange={(e) => setEditingPassword(prev => ({ ...prev, [u.username]: e.target.value }))}
+                    />
+                    <button 
+                      onClick={() => changeUserPassword(u.username)}
+                      className="bg-blue-100 text-blue-600 px-3 py-1 rounded text-xs font-bold hover:bg-blue-600 hover:text-white transition"
+                    >
+                      保存
+                    </button>
+                  </div>
                 </td>
                 <td className="p-6">
                   {u.username !== 'admin' && (
-                    <button onClick={() => deleteUser(u.username)} className="text-red-400 hover:text-red-600 font-bold">删除</button>
+                    <button onClick={() => deleteUser(u.username)} className="text-red-400 hover:text-red-600 font-bold text-sm">删除用户</button>
                   )}
                 </td>
               </tr>
@@ -330,7 +386,7 @@ const App: React.FC = () => {
                <span className="font-bold text-blue-800">同学: {currentUser.username}</span>
             </div>
             {currentUser.role === 'admin' && (
-              <button onClick={() => setView(AppView.ADMIN)} className="text-purple-600 font-bold hover:underline">管理</button>
+              <button onClick={() => setView(AppView.ADMIN)} className="text-purple-600 font-bold hover:underline">管理后台</button>
             )}
             <button onClick={handleLogout} className="text-gray-400 font-bold hover:text-red-500 transition">退出</button>
           </div>
