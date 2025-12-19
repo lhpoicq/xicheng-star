@@ -65,7 +65,7 @@ const App: React.FC = () => {
 
   const handleGradeSelect = (grade: number) => {
     setSelectedGrade(grade);
-    setSelectedUnit(null); // Reset selection when grade changes
+    setSelectedUnit(null); 
     setView(AppView.UNIT_SELECT);
   };
 
@@ -161,11 +161,12 @@ const App: React.FC = () => {
         return [...prev, { ...currentWord, consecutiveCorrectCount: 0 }];
       });
       setAiLoading(true);
+      // AI 请求增加了兜底逻辑
       getWordExplanation(currentWord.english, selectedGrade || 1).then(res => {
         setExplanation(res);
         setAiLoading(false);
       });
-      setTimeout(moveToNext, 4500);
+      setTimeout(moveToNext, 6000); // 错题展示时间稍微加长，方便阅读解析
     }
   };
 
@@ -183,13 +184,13 @@ const App: React.FC = () => {
             <img src="https://picsum.photos/seed/star-fltrp/200/200" alt="FLTRP Mascot" className="w-full h-full object-cover rounded-full" />
         </div>
         <div className="absolute -bottom-4 -right-4 bg-red-500 text-white font-cartoon text-lg px-4 py-1 rounded-full shadow-lg -rotate-12 border-4 border-white">
-          最新外研版
+          离线可用版
         </div>
       </div>
       <h1 className="text-5xl md:text-7xl font-cartoon text-blue-600 mb-6 drop-shadow-md">西城英语小状元</h1>
       <div className="mb-10 flex flex-col items-center space-y-4">
         <div className="bg-white px-8 py-3 rounded-full shadow-sm border border-blue-50">
-           <span className="text-blue-800 font-bold">同步北京市西城区教材：外研版(一起点)</span>
+           <span className="text-blue-800 font-bold">内置完整词库，断网也能背！</span>
         </div>
         <span className="font-bold text-blue-800 text-lg">🎯 闯关词量</span>
         <div className="flex bg-white p-2 rounded-full shadow-inner border">
@@ -209,7 +210,7 @@ const App: React.FC = () => {
         <button onClick={() => setView(AppView.WRONG_BOOK)} className="bg-red-500 hover:bg-red-600 text-white font-cartoon text-3xl px-14 py-6 rounded-full shadow-2xl transition hover:scale-105 border-b-8 border-red-900">错题本 ({wrongWords.length})</button>
       </div>
       <button onClick={resetProgress} className="mt-12 text-gray-400 text-sm hover:text-red-400 underline transition">
-        重置过关进度 (当前过关: {testedWordIds.length})
+        重置进度 (当前过关: {testedWordIds.length})
       </button>
     </div>
   );
@@ -287,7 +288,6 @@ const App: React.FC = () => {
           })}
         </div>
 
-        {/* Floating Confirm Button */}
         {selectedUnit !== null && (
           <div className="fixed bottom-10 left-0 w-full flex justify-center px-4 animate-fade-in z-50">
             <button 
@@ -412,7 +412,7 @@ const App: React.FC = () => {
             <div className="mt-8 border-t-2 border-red-50 pt-8 animate-fade-in">
               {aiLoading ? (
                 <div className="flex items-center justify-center space-x-2 text-blue-500 font-bold animate-pulse">
-                   <span>✨</span><span>AI 老师正在为你编写记忆法...</span>
+                   <span>✨</span><span>正在编写记忆法...</span>
                 </div>
               ) : explanation && (
                 <div className="bg-yellow-50 p-8 rounded-[2.5rem] border-2 border-yellow-200 text-left shadow-inner">
@@ -426,7 +426,7 @@ const App: React.FC = () => {
             </div>
           )}
           <div className="mt-10 flex justify-center">
-            <Mascot message={quizFeedback === 'correct' ? '真棒！这一关稳了！' : quizFeedback === 'wrong' ? '别灰心，新版教材核心词再看一眼！' : '加油小状元，全神贯注！'} />
+            <Mascot message={quizFeedback === 'correct' ? '真棒！这一关稳了！' : quizFeedback === 'wrong' ? '别灰心，哪怕离线也要坚持哦！' : '加油小状元，全神贯注！'} />
           </div>
         </div>
       </div>
