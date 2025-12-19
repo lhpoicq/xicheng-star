@@ -3,11 +3,25 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { AIExplanation } from "../types.ts";
 
 /**
- * Fetches an AI-generated explanation for a word suitable for a specific school grade.
+ * 获取 AI 单词解析。
+ * 如果离线或 API 调用失败，返回本地兜底提示。
  */
 export async function getWordExplanation(word: string, grade: number): Promise<AIExplanation | null> {
+  // 本地兜底内容
+  const fallback: AIExplanation = {
+    meaning: "这个单词是西城英语教材里的重要成员哦！",
+    funnySentence: `Keep practicing: ${word}!`,
+    story: "多读几遍，你会发现记忆它的窍门。",
+    mnemonic: "可以尝试把单词拆开来记，或者大声朗读三遍！"
+  };
+
   try {
-    // ALWAYS use new GoogleGenAI({ apiKey: process.env.API_KEY }) as per guidelines.
+    // 检查是否有 API Key
+    if (!process.env.API_KEY || process.env.API_KEY === 'undefined') {
+      console.warn("未检测到 API_KEY，切换至离线提示模式。");
+      return fallback;
+    }
+
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -27,12 +41,12 @@ export async function getWordExplanation(word: string, grade: number): Promise<A
       }
     });
 
-    // Access the extracted string output directly via .text property (not a method).
     const text = response.text;
-    if (!text) return null;
+    if (!text) return fallback;
     return JSON.parse(text) as AIExplanation;
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return null;
+    console.error("AI 服务暂不可用，已切换为本地提示:", error);
+    // 报错时返回本地兜底，不打断学习流程
+    return fallback;
   }
 }
