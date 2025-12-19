@@ -6,7 +6,7 @@ export interface Word {
   phonetic: string;
   grade: number;
   unit: number;
-  emoji?: string; // Added for visual quiz
+  emoji?: string;
 }
 
 export interface WrongWord extends Word {
@@ -22,6 +22,8 @@ export interface HistoryRecord {
 export enum AppView {
   WELCOME = 'WELCOME',
   GRADE_SELECT = 'GRADE_SELECT',
+  UNIT_SELECT = 'UNIT_SELECT', // New view for selecting specific unit
+  MODE_SELECT = 'MODE_SELECT',
   QUIZ = 'QUIZ',
   REPORT = 'REPORT',
   WRONG_BOOK = 'WRONG_BOOK',
@@ -35,4 +37,4 @@ export interface AIExplanation {
   mnemonic: string;
 }
 
-export type QuizMode = 'ENG_TO_CHI' | 'CHI_TO_ENG' | 'VISUAL_TO_ENG';
+export type QuizMode = 'ENG_TO_CHI' | 'CHI_TO_ENG';
