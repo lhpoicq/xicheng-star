@@ -1,5 +1,5 @@
 
-import { Word } from './types';
+import { Word } from './types.ts';
 
 export const GRADES = [1, 2, 3, 4, 5, 6];
 
