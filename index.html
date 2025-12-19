@@ -7,6 +7,10 @@
     <title>西城英语小状元</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      // 兼容性补丁：防止浏览器环境因找不到 process 对象而报错崩溃
+      window.process = window.process || { env: { API_KEY: undefined } };
+    </script>
     <style>
         body {
             font-family: 'Noto Sans SC', sans-serif;
@@ -24,6 +28,13 @@
             filter: blur(80px);
             border-radius: 50%;
             z-index: -1;
+        }
+        @keyframes bounce-slow {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+        .animate-bounce-slow {
+          animation: bounce-slow 3s ease-in-out infinite;
         }
     </style>
 <script type="importmap">
