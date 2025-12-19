@@ -20,14 +20,30 @@ export interface HistoryRecord {
 }
 
 export enum AppView {
+  LOGIN = 'LOGIN',
+  REGISTER = 'REGISTER',
+  ADMIN = 'ADMIN',
   WELCOME = 'WELCOME',
   GRADE_SELECT = 'GRADE_SELECT',
-  UNIT_SELECT = 'UNIT_SELECT', // New view for selecting specific unit
+  UNIT_SELECT = 'UNIT_SELECT',
   MODE_SELECT = 'MODE_SELECT',
   QUIZ = 'QUIZ',
   REPORT = 'REPORT',
   WRONG_BOOK = 'WRONG_BOOK',
   STATS = 'STATS'
+}
+
+export interface UserProgress {
+  testedWordIds: string[];
+  wrongWords: WrongWord[];
+  learningHistory: HistoryRecord[];
+}
+
+export interface UserAccount {
+  username: string;
+  password: string;
+  role: 'user' | 'admin';
+  progress: UserProgress;
 }
 
 export interface AIExplanation {
