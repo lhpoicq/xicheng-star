@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppView, Word, AIExplanation, WrongWord, QuizMode, HistoryRecord } from './types';
-import { GRADES, MOCK_WORDS } from './constants';
-import GradeCard from './components/GradeCard';
-import Mascot from './components/Mascot';
-import { getWordExplanation } from './services/geminiService';
+import { AppView, Word, AIExplanation, WrongWord, QuizMode, HistoryRecord } from './types.ts';
+import { GRADES, MOCK_WORDS } from './constants.ts';
+import GradeCard from './components/GradeCard.tsx';
+import Mascot from './components/Mascot.tsx';
+import { getWordExplanation } from './services/geminiService.ts';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.WELCOME);
@@ -56,7 +56,7 @@ const App: React.FC = () => {
     setCurrentWordIndex(0);
     setCorrectInSession(0);
     setWrongInSession(0);
-    setView(AppView.QUIZ); // Skip learning, go straight to quiz
+    setView(AppView.QUIZ); 
     setExplanation(null);
     setQuizFeedback(null);
   };
@@ -124,7 +124,6 @@ const App: React.FC = () => {
           setUserAnswer('');
           setExplanation(null);
         } else {
-          // End of session
           const newRecord: HistoryRecord = {
             date: new Date().toISOString(),
             wordsLearned: sessionWords.length,
@@ -144,7 +143,6 @@ const App: React.FC = () => {
         if (existing) return prev.map(w => w.id === currentWord.id ? { ...w, consecutiveCorrectCount: 0 } : w);
         return [...prev, { ...currentWord, consecutiveCorrectCount: 0 }];
       });
-      // Show explanation for wrong answer automatically
       handleAskAI();
     }
   };
