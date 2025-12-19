@@ -11,39 +11,28 @@ export async function getWordExplanation(word: string, grade: number): Promise<A
   };
 
   try {
-    // 极其保险的环境变量读取方式
-    let apiKey = undefined;
-    try {
-      apiKey = (window as any).process?.env?.API_KEY;
-    } catch(e) {}
-
-    if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-      return fallback;
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `针对小学${grade}年级的孩子，用最简单、有趣、卡通的口吻解释单词 "${word}"。`,
+      contents: `你是北京市西城区的一位资深小学英语老师。针对${grade}年级的孩子，用最亲切、幽默、充满童趣的口吻，为单词 "${word}" 提供一个有趣的记忆法。请注意避开复杂的语法。`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            meaning: { type: Type.STRING },
-            funnySentence: { type: Type.STRING },
-            story: { type: Type.STRING },
-            mnemonic: { type: Type.STRING }
+            meaning: { type: Type.STRING, description: "单词的中文意思" },
+            funnySentence: { type: Type.STRING, description: "一个有趣的短例句" },
+            story: { type: Type.STRING, description: "关于这个单词的小故事" },
+            mnemonic: { type: Type.STRING, description: "生动好记的联想记忆法" }
           },
           required: ["meaning", "funnySentence", "story", "mnemonic"]
         }
       }
     });
 
-    const text = response.text;
-    return text ? JSON.parse(text) : fallback;
+    return response.text ? JSON.parse(response.text) : fallback;
   } catch (error) {
-    console.error("AI service error:", error);
+    console.error("Gemini API Error:", error);
     return fallback;
   }
 }
