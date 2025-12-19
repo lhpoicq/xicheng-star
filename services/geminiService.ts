@@ -2,16 +2,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIExplanation } from "../types.ts";
 
+/**
+ * Fetches an AI-generated explanation for a word suitable for a specific school grade.
+ */
 export async function getWordExplanation(word: string, grade: number): Promise<AIExplanation | null> {
   try {
-    // Obtain API Key safely
-    const apiKey = (globalThis as any).process?.env?.API_KEY;
-    if (!apiKey) {
-      console.error("API_KEY is not defined in environment variables.");
-      return null;
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
+    // ALWAYS use new GoogleGenAI({ apiKey: process.env.API_KEY }) as per guidelines.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `针对小学${grade}年级的孩子，用最简单、有趣、卡通的口吻解释单词 "${word}"。`,
@@ -30,6 +27,7 @@ export async function getWordExplanation(word: string, grade: number): Promise<A
       }
     });
 
+    // Access the extracted string output directly via .text property (not a method).
     const text = response.text;
     if (!text) return null;
     return JSON.parse(text) as AIExplanation;
