@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppView, Word, AIExplanation, WrongWord, QuizMode, HistoryRecord } from './types.ts';
+import { AppView, Word, AIExplanation, WrongWord, QuizMode } from './types.ts';
 import { GRADES, MOCK_WORDS } from './constants.ts';
 import GradeCard from './components/GradeCard.tsx';
 import Mascot from './components/Mascot.tsx';
@@ -14,18 +14,16 @@ const App: React.FC = () => {
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [aiLoading, setAiLoading] = useState(false);
   const [explanation, setExplanation] = useState<AIExplanation | null>(null);
-  const [sessionLength, setSessionLength] = useState<number | 'all'>(10);
+  const [sessionLength] = useState<number | 'all'>(10);
   
   const [quizMode, setQuizMode] = useState<QuizMode>('ENG_TO_CHI');
   const [userAnswer, setUserAnswer] = useState('');
   const [quizFeedback, setQuizFeedback] = useState<'correct' | 'wrong' | null>(null);
   const [options, setOptions] = useState<string[]>([]);
-  const [correctInSession, setCorrectInSession] = useState(0);
-  const [wrongInSession, setWrongInSession] = useState(0);
-
-  const [wrongWords, setWrongWords] = useState<WrongWord[]>([]);
   const [testedWordIds, setTestedWordIds] = useState<string[]>([]);
+  const [wrongWords, setWrongWords] = useState<WrongWord[]>([]);
 
+  // 这里的持久化确保存储在浏览器中
   useEffect(() => {
     const savedWrong = localStorage.getItem('xicheng_wrong_book');
     const savedTested = localStorage.getItem('xicheng_tested_ids');
@@ -38,6 +36,7 @@ const App: React.FC = () => {
     localStorage.setItem('xicheng_tested_ids', JSON.stringify(testedWordIds));
   }, [wrongWords, testedWordIds]);
 
+  // 为“看英选意”模式生成选项
   useEffect(() => {
     if (view === AppView.QUIZ && sessionWords[currentWordIndex] && quizMode === 'ENG_TO_CHI') {
       const currentWord = sessionWords[currentWordIndex];
@@ -58,16 +57,14 @@ const App: React.FC = () => {
     let pool = MOCK_WORDS.filter(w => w.grade === grade);
     if (unit !== 'all') pool = pool.filter(w => w.unit === unit);
     
+    if (pool.length === 0) return alert("该单元暂无词汇！");
+
     const shuffled = pool.sort(() => 0.5 - Math.random());
     const finalWords = sessionLength === 'all' ? shuffled : shuffled.slice(0, sessionLength as number);
     
-    if (finalWords.length === 0) return alert("该单元暂无词汇！");
-
     setSessionWords(finalWords);
     setQuizMode(mode);
     setCurrentWordIndex(0);
-    setCorrectInSession(0);
-    setWrongInSession(0);
     setView(AppView.QUIZ);
     setQuizFeedback(null);
     setUserAnswer('');
@@ -83,7 +80,6 @@ const App: React.FC = () => {
 
     if (isCorrect) {
       setQuizFeedback('correct');
-      setCorrectInSession(prev => prev + 1);
       speak(currentWord.english);
       setTestedWordIds(prev => Array.from(new Set([...prev, currentWord.id])));
       setTimeout(() => {
@@ -96,7 +92,6 @@ const App: React.FC = () => {
       }, 800);
     } else {
       setQuizFeedback('wrong');
-      setWrongInSession(prev => prev + 1);
       setWrongWords(prev => {
         const exists = prev.find(w => w.id === currentWord.id);
         if (exists) return prev;
