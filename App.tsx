@@ -16,7 +16,6 @@ const App: React.FC = () => {
   const [explanation, setExplanation] = useState<AIExplanation | null>(null);
   const [sessionLength, setSessionLength] = useState<number | 'all'>(10);
   
-  // Quiz states
   const [quizMode, setQuizMode] = useState<QuizMode>('ENG_TO_CHI');
   const [userAnswer, setUserAnswer] = useState('');
   const [quizFeedback, setQuizFeedback] = useState<'correct' | 'wrong' | null>(null);
@@ -24,29 +23,29 @@ const App: React.FC = () => {
   const [correctInSession, setCorrectInSession] = useState(0);
   const [wrongInSession, setWrongInSession] = useState(0);
 
-  // Persistence
   const [wrongWords, setWrongWords] = useState<WrongWord[]>([]);
   const [learningHistory, setLearningHistory] = useState<HistoryRecord[]>([]);
   const [testedWordIds, setTestedWordIds] = useState<string[]>([]);
 
-  // Load persistence data
   useEffect(() => {
-    const savedWrong = localStorage.getItem('xicheng_wrong_book');
-    const savedHistory = localStorage.getItem('xicheng_history');
-    const savedTested = localStorage.getItem('xicheng_tested_ids');
-    if (savedWrong) setWrongWords(JSON.parse(savedWrong));
-    if (savedHistory) setLearningHistory(JSON.parse(savedHistory));
-    if (savedTested) setTestedWordIds(JSON.parse(savedTested));
+    try {
+      const savedWrong = localStorage.getItem('xicheng_wrong_book');
+      const savedHistory = localStorage.getItem('xicheng_history');
+      const savedTested = localStorage.getItem('xicheng_tested_ids');
+      if (savedWrong) setWrongWords(JSON.parse(savedWrong));
+      if (savedHistory) setLearningHistory(JSON.parse(savedHistory));
+      if (savedTested) setTestedWordIds(JSON.parse(savedTested));
+    } catch (e) {
+      console.error("Failed to load local storage data", e);
+    }
   }, []);
 
-  // Save changes
   useEffect(() => {
     localStorage.setItem('xicheng_wrong_book', JSON.stringify(wrongWords));
     localStorage.setItem('xicheng_history', JSON.stringify(learningHistory));
     localStorage.setItem('xicheng_tested_ids', JSON.stringify(testedWordIds));
   }, [wrongWords, learningHistory, testedWordIds]);
 
-  // Options generation for multiple choice
   useEffect(() => {
     if (view === AppView.QUIZ && sessionWords.length > 0 && currentWordIndex < sessionWords.length && quizMode === 'ENG_TO_CHI') {
       const currentWord = sessionWords[currentWordIndex];
@@ -58,9 +57,13 @@ const App: React.FC = () => {
   }, [view, currentWordIndex, sessionWords, quizMode]);
 
   const speak = (text: string) => {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
-    window.speechSynthesis.speak(utterance);
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.error("Speech error", e);
+    }
   };
 
   const handleGradeSelect = (grade: number) => {
@@ -161,12 +164,11 @@ const App: React.FC = () => {
         return [...prev, { ...currentWord, consecutiveCorrectCount: 0 }];
       });
       setAiLoading(true);
-      // AI 请求增加了兜底逻辑
       getWordExplanation(currentWord.english, selectedGrade || 1).then(res => {
         setExplanation(res);
         setAiLoading(false);
       });
-      setTimeout(moveToNext, 6000); // 错题展示时间稍微加长，方便阅读解析
+      // 这里的 setTimeout 会在一定时间后自动跳转，但也允许用户点击按钮手动跳转
     }
   };
 
@@ -174,6 +176,7 @@ const App: React.FC = () => {
     if (confirm("确定要重置所有已过关单词记录吗？")) {
       setTestedWordIds([]);
       localStorage.removeItem('xicheng_tested_ids');
+      window.location.reload();
     }
   };
 
@@ -240,7 +243,9 @@ const App: React.FC = () => {
   );
 
   const renderUnitSelect = () => {
-    const units = Array.from(new Set(MOCK_WORDS.filter(w => w.grade === selectedGrade).map(w => w.unit))).sort((a, b) => a - b);
+    const relevantWords = MOCK_WORDS.filter(w => w.grade === selectedGrade);
+    const units = Array.from(new Set(relevantWords.map(w => w.unit))).sort((a, b) => a - b);
+    
     return (
       <div className="max-w-4xl mx-auto px-4 py-12 animate-fade-in text-center pb-32">
         <div className="flex items-center space-x-4 mb-12 text-left">
@@ -248,45 +253,50 @@ const App: React.FC = () => {
           <h2 className="text-4xl font-cartoon text-blue-600">{selectedGrade}年级 - 选择单元</h2>
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-8">
-          <button 
-            onClick={() => handleUnitClick('all')}
-            className={`p-8 rounded-[2rem] font-cartoon text-3xl shadow-lg transition transform hover:scale-[1.03] border-4 flex flex-col items-center justify-center ${selectedUnit === 'all' ? 'bg-blue-600 text-white border-yellow-400 border-[6px]' : 'bg-blue-100 text-blue-800 border-transparent'}`}
-          >
-            <span>全部单词</span>
-            <span className="text-sm font-sans mt-2 opacity-80">All Words</span>
-            {selectedUnit === 'all' && <div className="mt-2 text-sm bg-yellow-400 text-blue-900 px-3 py-1 rounded-full">已选中</div>}
-          </button>
-          {units.map(unit => {
-            const unitWords = MOCK_WORDS.filter(w => w.grade === selectedGrade && w.unit === unit);
-            const testedUnitWords = unitWords.filter(w => testedWordIds.includes(w.id)).length;
-            const isDone = testedUnitWords === unitWords.length && unitWords.length > 0;
-            const isWelcome = unit === 0;
-            const isSelected = selectedUnit === unit;
-            
-            return (
-              <button 
-                key={unit}
-                onClick={() => handleUnitClick(unit)}
-                className={`relative p-8 rounded-[2rem] font-cartoon text-3xl shadow-md transition border-[6px] group flex flex-col items-center justify-center ${isSelected ? 'border-yellow-400 bg-blue-50 scale-[1.05] z-10' : 'border-transparent bg-white hover:bg-blue-50'}`}
-              >
-                <span className={isSelected ? 'text-blue-600' : isDone ? 'text-green-700' : isWelcome ? 'text-yellow-800' : 'text-blue-800'}>
-                  {isWelcome ? 'Welcome' : `Unit ${unit}`}
-                </span>
-                <div className="text-sm text-gray-400 mt-2 font-sans font-bold group-hover:text-blue-500 transition">
-                  {testedUnitWords}/{unitWords.length} 已背
-                </div>
-                {isDone && <div className="absolute -top-2 -right-2 bg-green-500 text-white p-1 rounded-full text-xs shadow-sm">✓</div>}
-                {isWelcome && !isSelected && <div className="absolute top-2 left-2 text-xl">🎉</div>}
-                {isSelected && (
-                  <div className="absolute -top-4 bg-yellow-400 text-blue-900 px-4 py-1 rounded-full text-sm font-bold shadow-md animate-bounce">
-                    已选定！
+        {units.length === 0 ? (
+          <div className="bg-white p-12 rounded-[3rem] shadow-xl border-4 border-dashed border-gray-100">
+            <p className="text-gray-400 text-2xl font-cartoon">该年级词库正在整理中，请选择三年级进行体验！</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-8">
+            <button 
+              onClick={() => handleUnitClick('all')}
+              className={`p-8 rounded-[2rem] font-cartoon text-3xl shadow-lg transition transform hover:scale-[1.03] border-4 flex flex-col items-center justify-center ${selectedUnit === 'all' ? 'bg-blue-600 text-white border-yellow-400 border-[6px]' : 'bg-blue-100 text-blue-800 border-transparent'}`}
+            >
+              <span>全部单词</span>
+              <span className="text-sm font-sans mt-2 opacity-80">All Words</span>
+              {selectedUnit === 'all' && <div className="mt-2 text-sm bg-yellow-400 text-blue-900 px-3 py-1 rounded-full">已选中</div>}
+            </button>
+            {units.map(unit => {
+              const unitWords = relevantWords.filter(w => w.unit === unit);
+              const testedUnitWords = unitWords.filter(w => testedWordIds.includes(w.id)).length;
+              const isDone = testedUnitWords === unitWords.length && unitWords.length > 0;
+              const isWelcome = unit === 0;
+              const isSelected = selectedUnit === unit;
+              
+              return (
+                <button 
+                  key={unit}
+                  onClick={() => handleUnitClick(unit)}
+                  className={`relative p-8 rounded-[2rem] font-cartoon text-3xl shadow-md transition border-[6px] group flex flex-col items-center justify-center ${isSelected ? 'border-yellow-400 bg-blue-50 scale-[1.05] z-10' : 'border-transparent bg-white hover:bg-blue-50'}`}
+                >
+                  <span className={isSelected ? 'text-blue-600' : isDone ? 'text-green-700' : isWelcome ? 'text-yellow-800' : 'text-blue-800'}>
+                    {isWelcome ? 'Welcome' : `Unit ${unit}`}
+                  </span>
+                  <div className="text-sm text-gray-400 mt-2 font-sans font-bold group-hover:text-blue-500 transition">
+                    {testedUnitWords}/{unitWords.length} 已背
                   </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
+                  {isDone && <div className="absolute -top-2 -right-2 bg-green-500 text-white p-1 rounded-full text-xs shadow-sm">✓</div>}
+                  {isSelected && (
+                    <div className="absolute -top-4 bg-yellow-400 text-blue-900 px-4 py-1 rounded-full text-sm font-bold shadow-md animate-bounce">
+                      已选定！
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {selectedUnit !== null && (
           <div className="fixed bottom-10 left-0 w-full flex justify-center px-4 animate-fade-in z-50">
@@ -348,7 +358,9 @@ const App: React.FC = () => {
             <span className="text-blue-800 font-bold bg-white px-4 py-1 rounded-full shadow-sm">
               进度 {currentWordIndex + 1} / {sessionWords.length}
             </span>
-            <span className="text-green-600 font-bold">{word.unit === 0 ? 'Welcome' : `Unit ${word.unit}`} | {quizMode === 'ENG_TO_CHI' ? '看英选意' : '看中拼英'}</span>
+            <span className="text-green-600 font-bold">
+              {word.unit === 0 ? 'Welcome' : `Unit ${word.unit}`} | {quizMode === 'ENG_TO_CHI' ? '看英选意' : '看中拼英'}
+            </span>
           </div>
           <div className="w-full bg-gray-200 h-4 rounded-full overflow-hidden shadow-inner border border-white">
             <div 
@@ -408,14 +420,15 @@ const App: React.FC = () => {
               )}
             </div>
           )}
-          {quizFeedback === 'wrong' && (
-            <div className="mt-8 border-t-2 border-red-50 pt-8 animate-fade-in">
+          
+          {(quizFeedback === 'wrong' || (quizFeedback === 'correct' && currentWordIndex < sessionWords.length)) && (
+            <div className="mt-8 border-t-2 border-dashed border-gray-100 pt-8 animate-fade-in flex flex-col items-center">
               {aiLoading ? (
                 <div className="flex items-center justify-center space-x-2 text-blue-500 font-bold animate-pulse">
-                   <span>✨</span><span>正在编写记忆法...</span>
+                   <span>✨</span><span>正在编写状元记忆法...</span>
                 </div>
-              ) : explanation && (
-                <div className="bg-yellow-50 p-8 rounded-[2.5rem] border-2 border-yellow-200 text-left shadow-inner">
+              ) : explanation && quizFeedback === 'wrong' && (
+                <div className="bg-yellow-50 p-8 rounded-[2.5rem] border-2 border-yellow-200 text-left shadow-inner w-full mb-6">
                   <p className="text-yellow-900 font-bold mb-3 flex items-center">
                      <span className="mr-2">💡</span> 状元记忆法：
                   </p>
@@ -423,10 +436,20 @@ const App: React.FC = () => {
                   <p className="text-gray-800 mb-4 font-medium"><strong>巧记：</strong>{explanation.mnemonic}</p>
                 </div>
               )}
+              
+              {quizFeedback === 'wrong' && (
+                <button 
+                  onClick={moveToNext}
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-12 rounded-full shadow-lg transition transform hover:scale-105 active:scale-95 text-xl"
+                >
+                  我记住了，继续闯关 🚀
+                </button>
+              )}
             </div>
           )}
+
           <div className="mt-10 flex justify-center">
-            <Mascot message={quizFeedback === 'correct' ? '真棒！这一关稳了！' : quizFeedback === 'wrong' ? '别灰心，哪怕离线也要坚持哦！' : '加油小状元，全神贯注！'} />
+            <Mascot message={quizFeedback === 'correct' ? '真棒！这一关稳了！' : quizFeedback === 'wrong' ? '别灰心，看看记忆法再继续！' : '加油小状元，全神贯注！'} />
           </div>
         </div>
       </div>
