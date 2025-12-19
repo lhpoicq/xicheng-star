@@ -4,36 +4,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>西城英语小状元 - Xicheng English Star</title>
+    <title>西城英语小状元</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
     <script>
-        // 模拟环境变量，防止 SDK 报错导致白屏
-        window.process = { env: { API_KEY: "" } };
+      // 1. 环境补丁：防止 process.env 访问崩溃
+      window.process = { env: { API_KEY: undefined } };
+      
+      // 2. 强力注销之前的 Service Worker (解决缓存卡死问题)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          for (let registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
+
+      // 3. 实时错误捕获
+      window.onerror = function(msg, url, line) {
+        console.error("Critical:", msg, "at", url, ":", line);
+        const root = document.getElementById('root');
+        if (root && (root.innerText.includes('召唤') || root.innerText === '')) {
+          root.innerHTML = `
+            <div style="padding: 40px; text-align: center; font-family: sans-serif;">
+              <h2 style="color: #ef4444; font-size: 24px;">加载出错了 😢</h2>
+              <p style="margin: 10px 0; color: #64748b;">原因：${msg}</p>
+              <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 24px; background: #2563eb; color: white; border: none; border-radius: 99px; cursor: pointer;">刷新重试</button>
+            </div>
+          `;
+        }
+      };
     </script>
     <style>
-        body { 
-            font-family: 'Noto Sans SC', sans-serif; 
-            background-color: #f0f9ff; 
-            margin: 0; 
-            padding: 0; 
-            overflow-x: hidden; 
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background-color: #f0f9ff;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
         }
-        .font-cartoon { font-family: 'ZCOOL KuaiLe', cursive; }
-        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .blob { 
-            position: absolute; 
-            width: 600px; 
-            height: 600px; 
-            background: linear-gradient(180deg, rgba(147, 197, 253, 0.3) 0%, rgba(191, 219, 254, 0) 100%); 
-            filter: blur(100px); 
-            border-radius: 50%; 
-            z-index: -1; 
+        .font-cartoon {
+            font-family: 'ZCOOL KuaiLe', cursive;
         }
-        .animate-bounce-slow { animation: bounce 3s ease-in-out infinite; }
-        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
-        button:active { transform: scale(0.95); }
+        .loading-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+          color: #2563eb;
+          text-align: center;
+        }
+        .spinner {
+          width: 50px;
+          height: 50px;
+          border: 5px solid #dbeafe;
+          border-top: 5px solid #2563eb;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+          margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
     <script type="importmap">
 {
@@ -49,8 +80,14 @@
 </script>
 </head>
 <body>
-    <div id="root"></div>
-    <!-- 显式引入入口文件 -->
+    <div id="root">
+      <div class="loading-container">
+        <div class="spinner"></div>
+        <h2 class="font-cartoon" style="font-size: 2rem;">正在召唤英语小状元...</h2>
+        <p style="color: #64748b; margin-top: 10px;">如果加载缓慢，请尝试切换移动网络 (4G/5G)</p>
+      </div>
+    </div>
+    <!-- 显式加载模块入口 -->
     <script type="module" src="./index.tsx"></script>
 </body>
 </html>
