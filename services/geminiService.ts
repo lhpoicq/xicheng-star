@@ -2,10 +2,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIExplanation } from "../types.ts";
 
-/**
- * 获取 AI 单词解析。
- * 增加了极强的容错处理，防止白屏。
- */
 export async function getWordExplanation(word: string, grade: number): Promise<AIExplanation | null> {
   const fallback: AIExplanation = {
     meaning: "这个单词是西城英语教材里的重要成员哦！",
@@ -15,12 +11,13 @@ export async function getWordExplanation(word: string, grade: number): Promise<A
   };
 
   try {
-    // 防御性获取 API_KEY
-    const env = (window as any).process?.env || {};
-    const apiKey = env.API_KEY;
+    // 极其保险的环境变量读取方式
+    let apiKey = undefined;
+    try {
+      apiKey = (window as any).process?.env?.API_KEY;
+    } catch(e) {}
 
-    if (!apiKey || apiKey === 'undefined') {
-      console.warn("未检测到有效的 API_KEY，使用本地模式。");
+    if (!apiKey || apiKey === 'undefined' || apiKey === '') {
       return fallback;
     }
 
@@ -46,7 +43,7 @@ export async function getWordExplanation(word: string, grade: number): Promise<A
     const text = response.text;
     return text ? JSON.parse(text) : fallback;
   } catch (error) {
-    console.error("AI 解释生成失败:", error);
+    console.error("AI service error:", error);
     return fallback;
   }
 }
